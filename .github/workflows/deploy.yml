@@ -1,0 +1,54 @@
+name: Deploy
+
+on:
+  push:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: self-hosted
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Verify tools
+        run: |
+          java -version
+          mvn -version
+          docker --version
+          kubectl version --client
+          kind --version
+
+      - name: Build application
+        run: mvn clean package -DskipTests
+
+      - name: Build Docker image
+        run: docker build -t todoapp-app:latest .
+
+      - name: Load image into kind
+        run: kind load docker-image todoapp-app:latest
+
+      - name: Apply postgres manifests
+        run: |
+          kubectl apply -f postgres-deployment.yaml
+          kubectl apply -f postgres-service.yaml
+
+      - name: Apply app manifests
+        run: |
+          kubectl apply -f app-deployment.yaml
+          kubectl apply -f app-service.yaml
+
+      - name: Restart app deployment
+        run: kubectl rollout restart deployment/todo-app
+
+      - name: Wait for app rollout
+        run: kubectl rollout status deployment/todo-app --timeout=180s
+
+      - name: Show pods
+        run: kubectl get pods -o wide
+
+      - name: Show services
+        run: kubectl get services
+
